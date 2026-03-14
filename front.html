@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pico Low-Shelf Filter Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #fff;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 15px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+
+    #connect {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      color: white;
+      border: none;
+      padding: 12px 30px;
+      border-radius: 25px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+
+    #connect:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+
+    #connect:active {
+      transform: translateY(0);
+    }
+
+    .main-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .metric-card {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    }
+
+    .metric-label {
+      font-size: 13px;
+      opacity: 0.9;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .metric-unit {
+      font-size: 18px;
+      opacity: 0.8;
+      margin-left: 4px;
+    }
+
+    .charts-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    .chart-wrapper {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 16px;
+      padding: 25px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    }
+
+    .chart-title {
+      color: #333;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 15px;
+    }
+
+    canvas {
+      max-height: 300px;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+
+    .status-connected {
+      background: #4ade80;
+      box-shadow: 0 0 10px #4ade80;
+    }
+
+    .status-disconnected {
+      background: #64748b;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    #raw {
+      background: rgba(0, 0, 0, 0.3);
+      color: #a5f3fc;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Color coding for metrics */
+    .metric-card:nth-child(1) { border-left: 4px solid #3b82f6; }
+    .metric-card:nth-child(2) { border-left: 4px solid #10b981; }
+    .metric-card:nth-child(3) { border-left: 4px solid #f59e0b; }
+    .metric-card:nth-child(4) { border-left: 4px solid #8b5cf6; }
+  </style>
+</head>
+
+<body>
+  <div class="main-container">
+    <div class="header">
+      <h1>Pico Low-Shelf Filter Monitor</h1>
+      <button id="connect">
+        <span class="status-indicator status-disconnected" id="status"></span>
+        Connect Pico
+      </button>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Input RMS</div>
+        <div class="metric-value" id="rmsInVal">–<span class="metric-unit">V</span></div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Output RMS</div>
+        <div class="metric-value" id="rmsOutVal">–<span class="metric-unit">V</span></div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Gain</div>
+        <div class="metric-value" id="gainVal">–<span class="metric-unit">dB</span></div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Filter Mode</div>
+        <div class="metric-value" id="modeVal">–</div>
+      </div>
+    </div>
+
+    <div class="charts-container">
+      <div class="chart-wrapper">
+        <div class="chart-title">RMS Voltage Levels</div>
+        <canvas id="rmsChart"></canvas>
+      </div>
+
+      <div class="chart-wrapper">
+        <div class="chart-title">Gain Response</div>
+        <canvas id="gainChart"></canvas>
+      </div>
+    </div>
+
+    <pre id="raw"></pre>
+  </div>
+
+  <script>
+    const btn = document.getElementById("connect");
+    const raw = document.getElementById("raw");
+    const statusIndicator = document.getElementById("status");
+
+    const rmsInBox = document.getElementById("rmsInVal");
+    const rmsOutBox = document.getElementById("rmsOutVal");
+    const gainBox = document.getElementById("gainVal");
+    const modeBox = document.getElementById("modeVal");
+
+    // RMS Chart
+    const rmsCtx = document.getElementById("rmsChart").getContext("2d");
+    const rmsChart = new Chart(rmsCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Input RMS",
+            borderColor: "#3b82f6",
+            backgroundColor: "rgba(59, 130, 246, 0.1)",
+            data: [],
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          },
+          {
+            label: "Output RMS",
+            borderColor: "#10b981",
+            backgroundColor: "rgba(16, 185, 129, 0.1)",
+            data: [],
+            tension: 0.4,
+            fill: true,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        animation: { duration: 0 },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          }
+        },
+        scales: {
+          x: {
+            display: true,
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          },
+          y: {
+            display: true,
+            title: { display: true, text: 'Voltage [V]', color: '#666' },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          }
+        }
+      }
+    });
+
+    // Gain Chart
+    const gainCtx = document.getElementById("gainChart").getContext("2d");
+    const gainChart = new Chart(gainCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Gain",
+            borderColor: "#f59e0b",
+            backgroundColor: "rgba(245, 158, 11, 0.1)",
+            data: [],
+            tension: 0.4,
+            fill: true,
+            borderWidth: 3,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        animation: { duration: 0 },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          }
+        },
+        scales: {
+          x: {
+            display: true,
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          },
+          y: {
+            display: true,
+            title: { display: true, text: 'Gain [dB]', color: '#666' },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          }
+        }
+      }
+    });
+
+    btn.onclick = async () => {
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+
+        statusIndicator.classList.remove('status-disconnected');
+        statusIndicator.classList.add('status-connected');
+        btn.textContent = 'Connected';
+        btn.prepend(statusIndicator);
+
+        const reader = port.readable.getReader();
+        const decoder = new TextDecoder();
+
+        let buffer = "";
+        let t = 0;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value);
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            raw.textContent += line + "\n";
+            raw.scrollTop = raw.scrollHeight;
+
+            const match = line.match(
+              /Mode=(\d).*RMSin=([\d.]+)V.*RMSout=([\d.]+)V.*Gain=\s*([-\d.]+)\s*dB/
+            );
+
+            if (match) {
+              const mode = parseInt(match[1]);
+              const rmsIn = parseFloat(match[2]);
+              const rmsOut = parseFloat(match[3]);
+              const gain = parseFloat(match[4]);
+
+              rmsInBox.innerHTML = rmsIn.toFixed(3) + '<span class="metric-unit">V</span>';
+              rmsOutBox.innerHTML = rmsOut.toFixed(3) + '<span class="metric-unit">V</span>';
+              gainBox.innerHTML = gain.toFixed(1) + '<span class="metric-unit">dB</span>';
+              modeBox.innerHTML = (mode === 0) ? "−10 dB" : "−35 dB";
+
+              const timeLabel = t++;
+              
+              // Update RMS Chart
+              rmsChart.data.labels.push(timeLabel);
+              rmsChart.data.datasets[0].data.push(rmsIn);
+              rmsChart.data.datasets[1].data.push(rmsOut);
+
+              // Update Gain Chart
+              gainChart.data.labels.push(timeLabel);
+              gainChart.data.datasets[0].data.push(gain);
+
+              if (rmsChart.data.labels.length > 50) {
+                rmsChart.data.labels.shift();
+                rmsChart.data.datasets.forEach(ds => ds.data.shift());
+                gainChart.data.labels.shift();
+                gainChart.data.datasets.forEach(ds => ds.data.shift());
+              }
+
+              rmsChart.update();
+              gainChart.update();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Connection error:', error);
+        alert('Failed to connect to device');
+      }
+    };
+  </script>
+</body>
+</html>
